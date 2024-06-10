@@ -1,16 +1,66 @@
-import { useState } from "react";
-import {ethers} from "ethers";
+import { useState,useMemo } from "react";
+import {ethers,providers} from "ethers";
 import wc from "../../utils/witness_calculator";
 import utils from "../../utils/util";
 import {abi as ShadowABI} from "../../utils/ABI/shadowabi.json";
 import shadowBG from "../assets/shadowbg.png";
+import { useAccount, useConnectorClient } from 'wagmi'
+import Modal from 'react-modal';
+
+const customStyles = {
+  content: {
+    top: '50%',
+    left: '50%',
+    right: 'auto',
+    bottom: 'auto',
+    marginRight: '-50%',
+    transform: 'translate(-50%, -50%)',
+    width:'50%',
+  },
+};
+
+Modal.setAppElement('#root');
+
 export default function Section(){
 
     const [isDeposit,setIsDeposit] = useState(true);
     const [secretValue, setSecretValue] = useState('');
+    const [proofElements,updateProofElements] = useState(null);
+    const [modalIsOpen, setIsOpen] = useState(false);
 
+    const { chainId,address } = useAccount();
     const shadowInterface  = new ethers.utils.Interface(ShadowABI);
-    const shadowAddress = "";
+    const shadowAddress = "0xF94ba41BCC0bb7f700BeeB1086Ee8eC9b3ad2eda";
+
+    const clientToSigner = (client)=> {
+        const { account, chain, transport } = client
+        const network = {
+          chainId: chain.id,
+          name: chain.name,
+          ensAddress: chain.contracts?.ensRegistry?.address,
+        }
+        const provider = new providers.Web3Provider(transport, network)
+        const signer = provider.getSigner(account.address)
+        return signer
+    }
+
+    /** Hook to convert a Viem Client to an ethers.js Signer. */
+    const useEthersSigner = ()=> {
+        const { data: client } = useConnectorClient({ chainId })
+        return useMemo(() => (client ? clientToSigner(client) : undefined), [client])
+    }
+
+    const txnSigner = useEthersSigner();
+    console.log("Connected address: ",address);
+    console.log("Signer: ",txnSigner);
+
+    const openModal = ()=> {
+        setIsOpen(true);
+    }
+
+    const closeModal = ()=> {
+        setIsOpen(false);
+    }
 
     // Deposit
     const depositEther = async () =>{
@@ -30,27 +80,37 @@ export default function Section(){
 
         console.log("Commitment: ",commitment);
         console.log("Nullifier: ",nullifierHash);
-        const value = ethers.BigNumber.from("10000000000000000").toHexString();
+        const value = ethers.BigNumber.from("1000000000000000").toHexString(); //0.001 ether
 
         const tx = {
             to: shadowAddress,
-            from :,
+            from :address,
             value:value,
             data: shadowInterface.encodeFunctionData("deposit",[commitment])
         }
         // Send transaction
         try{
-            const txHash = await window.ethereum.request({ method: "eth_sendTransaction", params: [tx] });
+            const txHash = await txnSigner.sendTransaction(tx);
+            const receipt = await txHash.wait();
+            const log = receipt.logs[0];
+            const logData = log.data;
+            const logTopic = log.topics;
+
+            const decodedData = shadowInterface.decodeEventLog("Deposit",logData,logTopic);
 
             const proofElements = {
+                root:utils.BNToDecimal(decodedData.root),
                 nullifierHash: `${nullifierHash}`,
                 secret: secret,
                 nullifier: nullifier,
                 commitment: `${commitment}`,
-                txHash: txHash
+                hashPairings: decodedData.hashPairings.map((n)=>(utils.BNToDecimal(n))),
+                hashDirections: decodedData.pairDirection
             };
-
-            console.log("Transaction hash: ",txHash);
+            console.log("Proof elements: ",proofElements);
+            updateProofElements(btoa(JSON.stringify(proofElements)));
+            //Open modal
+            openModal();
         }catch(e){
             console.log(e);
         }
@@ -124,6 +184,17 @@ export default function Section(){
     
     return(
         <>
+            <Modal
+                isOpen={modalIsOpen}
+                onRequestClose={closeModal}
+                style={customStyles}
+                contentLabel="Save your secret"
+            >
+                <p className="border-solid border-2 overflow-x-auto h-32">{proofElements}</p>
+                <div>
+                    <button className="border-2 border-black bg-black text-white font-semibold py-2 px-4 w-full hover:opacity-85" onClick={async ()=>{await navigator.clipboard.writeText(proofElements)}}>Copy secret</button>
+                </div>
+            </Modal>
             <div className="flex h-full">
                 <div className="min-h-full basis-3/5 flex justify-center items-center" >
 

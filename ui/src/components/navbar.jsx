@@ -1,4 +1,3 @@
-import reactLogo from '../assets/react.svg'
 import shadowLogo from "../assets/shadowlogo.jpeg";
 import { ConnectButton } from '@rainbow-me/rainbowkit';
 
