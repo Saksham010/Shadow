@@ -4,7 +4,12 @@ pragma solidity 0.8.17;
 import "./MiMCSponge.sol";
 import "./ReentrancyGuard.sol";
 
+interface IVerifier{
+    function verifyProof(uint[2] calldata _pA,uint[2][2] calldata _pB,uint[2] calldata _pC,uint[3] calldata _pubSignals)external;
+}
+
 contract Shadow is ReentrancyGuard {
+    address verifier;
     Hasher hasher;
 
     uint8 public treeLevel = 10;
@@ -34,13 +39,14 @@ contract Shadow is ReentrancyGuard {
 
     constructor(address _hasher,address _verifier){
         hasher = Hasher(_hasher);
+        verifier = _verifier;
 
     }
 
-    function deposit(uint256 _commitment) external payable nonReentrant{
-        require(msg.value == denomination, "Only deposit of 0.001 ETH is allowed");
-        require(!commitments[_commitment], "Duplicate commitment");
-        require(nextLeafIdx < 2 ** treeLevel, "Merkle tree has been filled. No more deposit can be made");
+    function deposit(uint256 _commitment) external payable nonReentrant {
+        require(msg.value == denomination, "incorrect-amount");
+        require(!commitments[_commitment], "existing-commitment");
+        require(nextLeafIdx < 2 ** treeLevel, "tree-full");
 
         uint256 newRoot;
         uint256[10] memory hashPairings;
@@ -51,37 +57,67 @@ contract Shadow is ReentrancyGuard {
 
         uint256 left;
         uint256 right;
-        uint256[2] memory ins; //For sponge
-
-        for(uint8 i=0; i < treeLevel; i++){
-            lastLevelHash[treeLevel] = currentHash;
-
-            //If the node is on left
+        uint256[2] memory ins;
+        
+        for(uint8 i = 0; i < treeLevel; i++){
+            
             if(currentIdx % 2 == 0){
-                left = currentIdx;
+                left = currentHash;
                 right = levelDefaults[i];
                 hashPairings[i] = levelDefaults[i];
-                hashDirections[i] = 0; //Left
+                hashDirections[i] = 0;
             }else{
                 left = lastLevelHash[i];
                 right = currentHash;
-                hashPairings[i] = lastLevelHash[i]; //Sibling pairing of the current commitment
-                hashDirections[i] = 1; //Right
-
-                ins[0] = left;
-                ins[1] = right;
-
-                (uint256 h) = hasher.MiMC5Sponge{gas: 150000}(ins, _commitment);
-                currentHash = h;
-                currentIdx = currentIdx / 2;
+                hashPairings[i] = lastLevelHash[i];
+                hashDirections[i] = 1;
             }
+            lastLevelHash[i] = currentHash;
+
+            ins[0] = left;
+            ins[1] = right;
+
+            (uint256 h) = hasher.MiMC5Sponge{ gas: 150000 }(ins, _commitment);
+
+            currentHash = h;
+            currentIdx = currentIdx / 2;
         }
+
         newRoot = currentHash;
         roots[newRoot] = true;
         nextLeafIdx += 1;
+
         commitments[_commitment] = true;
         emit Deposit(newRoot, hashPairings, hashDirections);
-}
+    }
+
+    function withdraw(
+        uint[2] calldata _pA,
+        uint[2][2] calldata _pB,
+        uint[2] calldata _pC,
+        uint[2] calldata _pubSignals
+    )external payable nonReentrant {
+        uint256 _root = _pubSignals[0];
+        uint256 _nullifierHash = _pubSignals[1];
+
+        require(!nullifierHashes[_nullifierHash], "Already spent");
+        require(roots[_root],"Invalid root");
+
+        uint256 _addr = uint256(uint160(msg.sender));
+
+        (bool verifyOK,) = verifier.call(abi.encodeCall(IVerifier.verifyProof,(_pA,_pB,_pC,[_root,_nullifierHash,_addr])));
+
+        require(verifyOK,"Invalid proof");
+
+        nullifierHashes[_nullifierHash] = true;
+        address payable target = payable(msg.sender);
+
+        (bool ok,) = target.call{value:denomination}("");
+        require(ok,"Withdraw failed");
+
+        emit Withdrawal(msg.sender, _nullifierHash);
+
+    }
 
 }
 

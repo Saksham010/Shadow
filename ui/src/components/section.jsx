@@ -25,12 +25,13 @@ export default function Section(){
 
     const [isDeposit,setIsDeposit] = useState(true);
     const [secretValue, setSecretValue] = useState('');
+    const [withdrawalAddress,setWithdrawalAddress] = useState('');
     const [proofElements,updateProofElements] = useState(null);
     const [modalIsOpen, setIsOpen] = useState(false);
 
     const { chainId,address } = useAccount();
     const shadowInterface  = new ethers.utils.Interface(ShadowABI);
-    const shadowAddress = "0xF94ba41BCC0bb7f700BeeB1086Ee8eC9b3ad2eda";
+    const shadowAddress = "0x258b88f0b8336005eb1a0f46aA0aBc07c56Cd8fC";
 
     const clientToSigner = (client)=> {
         const { account, chain, transport } = client
@@ -93,6 +94,7 @@ export default function Section(){
             const txHash = await txnSigner.sendTransaction(tx);
             const receipt = await txHash.wait();
             const log = receipt.logs[0];
+            console.log("Log: ",log);
             const logData = log.data;
             const logTopic = log.topics;
 
@@ -113,6 +115,53 @@ export default function Section(){
             openModal();
         }catch(e){
             console.log(e);
+        }
+    }
+
+    //Withdraw 
+    const withdrawEther = async () =>{
+
+        //Validate inputs are not empty
+        if(withdrawalAddress == '' || secretValue == ''){
+            alert("Empty field is not allowed");
+        }else{
+            try{
+                const proofString = secretValue;
+                const proofElements = JSON.parse(atob(proofString));
+                const SnarkJS = window['snarkjs'];
+
+                const proofInput = {
+                    "root":proofElements.root,
+                    "nullifierHash":proofElements.nullifierHash,
+                    "recipient":utils.BNToDecimal(withdrawalAddress),
+                    "secret":utils.BNToBinary(proofElements.secret).split(""),
+                    "nullifier":utils.BNToBinary(proofElements.nullifier).split(""),
+                    "hashPairings":proofElements.hashPairings,
+                    "hashDirections":proofElements.hashDirections,
+                }
+                console.log("Proof of input later: ",proofInput)
+                const {proof,publicSignals} = await SnarkJS.groth16.fullProve(proofInput,'../../utils/withdraw.wasm','../../utils/setup_final.zkey');
+                console.log("Proof: ",proof);
+                console.log("Public signal: ",publicSignals);
+                const callInputs = [
+                    proof.pi_a.slice(0, 2).map(utils.BN256ToHex),
+                    proof.pi_b.slice(0, 2).map((row) => (utils.reverseCoordinate(row.map(utils.BN256ToHex)))),
+                    proof.pi_c.slice(0, 2).map(utils.BN256ToHex),
+                    publicSignals.slice(0, 2).map(utils.BN256ToHex)
+                ];
+                const callData = shadowInterface.encodeFunctionData("withdraw",callInputs);
+        
+                const tx = {
+                    to: shadowAddress,
+                    from: address,
+                    data: callData
+                }
+                const txHash = await txnSigner.sendTransaction(tx);
+                const receipt = await txHash.wait();
+                console.log("Withdraw receipt: ",receipt);
+            }catch(err){    
+                console.log(err);
+            }
         }
     }
 
@@ -167,13 +216,13 @@ export default function Section(){
                     <div className="pl-4">
                     </div>
                     <div className="w-full ">
-                        <input className="border-2 border-black text-black font-semibold py-2 px-4 w-full hover:cursor-auto" value={secretValue} onChange={(e)=>setSecretValue(e.target.value)} placeholder="Place your recepient address"></input>
+                        <input className="border-2 border-black text-black font-semibold py-2 px-4 w-full hover:cursor-auto" value={withdrawalAddress} onChange={(e)=>setWithdrawalAddress(e.target.value)} placeholder="Place your recepient address"></input>
                     </div>
                 </div>
 
                 <div>
                     <div className="pt-2">
-                        <button className="border-2 border-black bg-black text-white font-semibold py-2 px-4 w-full hover:opacity-85">Withdraw</button>
+                        <button className="border-2 border-black bg-black text-white font-semibold py-2 px-4 w-full hover:opacity-85" onClick={withdrawEther}>Withdraw</button>
                     </div>
                 </div>  
             
