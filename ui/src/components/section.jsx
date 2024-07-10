@@ -6,6 +6,8 @@ import {abi as ShadowABI} from "../../utils/ABI/shadowabi.json";
 import shadowBG from "../assets/shadowbg.png";
 import { useAccount, useConnectorClient } from 'wagmi'
 import Modal from 'react-modal';
+import { toast } from 'react-toastify';
+
 
 const customStyles = {
   content: {
@@ -65,6 +67,11 @@ export default function Section(){
 
     // Deposit
     const depositEther = async () =>{
+
+        if(address == undefined){
+            return toast.error("Wallet not connected");
+        }
+
         const secret = ethers.BigNumber.from(ethers.utils.randomBytes(32)).toString();
         const nullifier = ethers.BigNumber.from(ethers.utils.randomBytes(32)).toString();
         const input = {
@@ -92,7 +99,11 @@ export default function Section(){
         // Send transaction
         try{
             const txHash = await txnSigner.sendTransaction(tx);
-            const receipt = await txHash.wait();
+            const receipt = await toast.promise(txHash.wait(),{
+                pending:"Depositing funds 😎",
+                error:"Deposit failed 😔",
+                success:"Deposit successfull 🤯"
+            });
             const log = receipt.logs[0];
             console.log("Log: ",log);
             const logData = log.data;
@@ -120,6 +131,9 @@ export default function Section(){
 
     //Withdraw 
     const withdrawEther = async () =>{
+        if(address == undefined){
+            return toast.error("Wallet not connected");
+        }
 
         //Validate inputs are not empty
         if(withdrawalAddress == '' || secretValue == ''){
@@ -158,12 +172,29 @@ export default function Section(){
                     data: callData
                 }
                 
-                const txResponse = await fetch('http://127.0.0.1:3000/submit-transaction',{
+                const toastId = toast.loading("Sending withdrawal request 😎")
+                fetch('http://127.0.0.1:3000/submit-transaction',{
                     method:'POST',
                     body: JSON.stringify({ txn: tx}),
-                });
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                }).then((response)=>{
+                    if (!response.ok) {
+                        throw new Error('Network response was not ok');
+                    }
+                    if(response.status != 200){
+                        throw new Error("Withdrawal failed");
+                    }
+                    return response.json(); // Parse response body as JSON
 
-                console.log("Transaction Response: ",txResponse);
+                }).then((txResponse)=>{
+                    toast.update(toastId, { render: "Withdrawal successfull 🤯", type: "success", isLoading: false,autoClose:5000,hideProgressBar: false});
+                    console.log("Transaction Response: ",txResponse);
+                }).catch(error => {
+                    toast.update(toastId, { render: "Withdraw failed 😔", type: "error", isLoading: false, autoClose:5000,hideProgressBar: false});
+                    console.error('Withdraw failed:', error);
+                });
 
                 // const txHash = await txnSigner.sendTransaction(tx);
                 // const receipt = await txHash.wait();
@@ -247,10 +278,17 @@ export default function Section(){
                 onRequestClose={closeModal}
                 style={customStyles}
                 contentLabel="Save your secret"
+                shouldCloseOnOverlayClick={false}
             >
-                <p className="border-solid border-2 overflow-x-auto h-32">{proofElements}</p>
+                <div className="h-44 overflow-x-auto">
+                    <p className="break-words">{proofElements}</p>
+                </div>
+                <br></br>
                 <div>
-                    <button className="border-2 border-black bg-black text-white font-semibold py-2 px-4 w-full hover:opacity-85" onClick={async ()=>{await navigator.clipboard.writeText(proofElements)}}>Copy secret</button>
+                    <button className="border-2 border-black bg-black text-white font-semibold py-2 px-4 w-full hover:opacity-85" onClick={async ()=>{
+                        await navigator.clipboard.writeText(proofElements);
+                        setIsOpen(val => !val);
+                    }}>Copy secret</button>
                 </div>
             </Modal>
             <div className="flex h-full">
