@@ -31,7 +31,7 @@ export default function Section(){
 
     const { chainId,address } = useAccount();
     const shadowInterface  = new ethers.utils.Interface(ShadowABI);
-    const shadowAddress = "0x258b88f0b8336005eb1a0f46aA0aBc07c56Cd8fC";
+    const shadowAddress = "0x4e78d4b152a0B251f3FF19f241893Afc17980C3E";
 
     const clientToSigner = (client)=> {
         const { account, chain, transport } = client
@@ -147,7 +147,8 @@ export default function Section(){
                     proof.pi_a.slice(0, 2).map(utils.BN256ToHex),
                     proof.pi_b.slice(0, 2).map((row) => (utils.reverseCoordinate(row.map(utils.BN256ToHex)))),
                     proof.pi_c.slice(0, 2).map(utils.BN256ToHex),
-                    publicSignals.slice(0, 2).map(utils.BN256ToHex)
+                    publicSignals.slice(0, 2).map(utils.BN256ToHex),
+                    withdrawalAddress
                 ];
                 const callData = shadowInterface.encodeFunctionData("withdraw",callInputs);
         
@@ -156,9 +157,17 @@ export default function Section(){
                     from: address,
                     data: callData
                 }
-                const txHash = await txnSigner.sendTransaction(tx);
-                const receipt = await txHash.wait();
-                console.log("Withdraw receipt: ",receipt);
+                
+                const txResponse = await fetch('http://127.0.0.1:3000/submit-transaction',{
+                    method:'POST',
+                    body: JSON.stringify({ txn: tx}),
+                });
+
+                console.log("Transaction Response: ",txResponse);
+
+                // const txHash = await txnSigner.sendTransaction(tx);
+                // const receipt = await txHash.wait();
+                // console.log("Withdraw receipt: ",receipt);
             }catch(err){    
                 console.log(err);
             }

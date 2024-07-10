@@ -95,7 +95,8 @@ contract Shadow is ReentrancyGuard {
         uint[2] calldata _pA,
         uint[2][2] calldata _pB,
         uint[2] calldata _pC,
-        uint[2] calldata _pubSignals
+        uint[2] calldata _pubSignals,
+        address recipient
     )external payable nonReentrant {
         uint256 _root = _pubSignals[0];
         uint256 _nullifierHash = _pubSignals[1];
@@ -103,14 +104,14 @@ contract Shadow is ReentrancyGuard {
         require(!nullifierHashes[_nullifierHash], "Already spent");
         require(roots[_root],"Invalid root");
 
-        uint256 _addr = uint256(uint160(msg.sender));
+        uint256 _addr = uint256(uint160(recipient));
 
         (bool verifyOK,) = verifier.call(abi.encodeCall(IVerifier.verifyProof,(_pA,_pB,_pC,[_root,_nullifierHash,_addr])));
 
         require(verifyOK,"Invalid proof");
 
         nullifierHashes[_nullifierHash] = true;
-        address payable target = payable(msg.sender);
+        address payable target = payable(recipient);
 
         (bool ok,) = target.call{value:denomination}("");
         require(ok,"Withdraw failed");

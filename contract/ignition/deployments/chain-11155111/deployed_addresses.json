@@ -3,5 +3,6 @@
   "ShadowContract#Shadow": "0xF94ba41BCC0bb7f700BeeB1086Ee8eC9b3ad2eda",
   "VerifierContract#Groth16Verifier": "0x0057944092F3da98305b7805190A349E9Fc38Cfb",
   "FinalShadowContract#Shadow": "0xBA33F92BC25299679882aC7fC929d44A499877d7",
-  "UpdatedFinalShadowContract#Shadow": "0x258b88f0b8336005eb1a0f46aA0aBc07c56Cd8fC"
+  "UpdatedFinalShadowContract#Shadow": "0x258b88f0b8336005eb1a0f46aA0aBc07c56Cd8fC",
+  "RecipientShadowContract#Shadow": "0x4e78d4b152a0B251f3FF19f241893Afc17980C3E"
 }
